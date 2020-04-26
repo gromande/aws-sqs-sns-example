@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  aws-sqs-sns-example
+
+  Sample SAM Template for aws-sqs-sns-example
+
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+  StandardQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: "StandardQueue"
+  SampleTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: SampleTopic
+  TopicSubscription:
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      TopicArn: !Ref SampleTopic
+      Endpoint:
+        Fn::GetAtt:
+          - "StandardQueue"
+          - "Arn"
+      Protocol: sqs
+      RawMessageDelivery: 'true'
+  QueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - Ref: StandardQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Id: "SnsQueuePolicyDocument"
+        Statement:
+          - Sid: "1"
+            Effect: "Allow"
+            Principal: "*"
+            Action:
+              - "sqs:SendMessage"
+            Resource: "*"
+            Condition:
+              ArnEquals:
+                aws:SourceArn:
+                  Ref: SampleTopic
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+  ProducerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.producer_lambda_handler
+      Runtime: python3.7
+      Policies: AmazonSQSFullAccess
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /producer
+            Method: post
+            RestApiId:
+              Ref: ApiGateway
+  TopicFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.topic_lambda_handler
+      Runtime: python3.7
+      Policies: AmazonSNSFullAccess
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /topic
+            Method: post
+            RestApiId:
+              Ref: ApiGateway
+  ConsumerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.consumer_lambda_handler
+      Runtime: python3.7
+      Policies: AmazonSQSFullAccess
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /consumer
+            Method: get
+            RestApiId:
+              Ref: ApiGateway
+
+Outputs:
+  ApiGateway:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/Prod"
